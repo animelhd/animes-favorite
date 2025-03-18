@@ -50,7 +50,7 @@ class Favorite extends Model
 
     public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        return $this->belongsTo(\config('auth.providers.users.model'), \config('animesfavorite.user_foreign_key'));
+        return $this->belongsTo(\config('animesfavorite.favoriter_model'), \config('animesfavorite.user_foreign_key'));
     }
 
     public function favoriter(): \Illuminate\Database\Eloquent\Relations\BelongsTo
