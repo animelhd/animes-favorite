@@ -2,106 +2,45 @@
 
 namespace Animelhd\AnimesFavorite\Traits;
 
-use Illuminate\Contracts\Pagination\Paginator;
+use Animelhd\AnimesFavorite\Favorite;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Pagination\AbstractCursorPaginator;
-use Illuminate\Pagination\AbstractPaginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\LazyCollection;
+use App\Models\Anime;
 
-/**
- * @property \Illuminate\Database\Eloquent\Collection $favorites
- */
 trait Favoriter
 {
-    public function favorite(Model $object): void
+    public function favorite(Anime $anime): void
     {
-        /* @var \Animelhd\AnimesFavorite\Traits\Favoriteable $object */
-        if (! $this->hasFavorited($object)) {
-            $favorite = app(config('animesfavorite.favorite_model'));
-            $favorite->{config('animesfavorite.user_foreign_key')} = $this->getKey();
-
-            $object->favorites()->save($favorite);
+        if (! $this->hasFavorited($anime)) {
+            $this->favorites()->create([
+                'anime_id' => $anime->getKey(),
+            ]);
         }
     }
 
-    public function unfavorite(Model $object): void
+    public function unfavorite(Anime $anime): void
     {
-        /* @var \Animelhd\AnimesFavorite\Traits\Favoriteable $object */
-        $relation = $object->favorites()
-            ->where('favoriteable_id', $object->getKey())
-            ->where('favoriteable_type', $object->getMorphClass())
-            ->where(config('animesfavorite.user_foreign_key'), $this->getKey())
-            ->first();
-
-        if ($relation) {
-            $relation->delete();
-        }
+        $this->favorites()
+            ->where('anime_id', $anime->getKey())
+            ->delete();
     }
 
-    public function toggleFavorite(Model $object): void
+    public function toggleFavorite(Anime $anime): void
     {
-        $this->hasFavorited($object) ? $this->unfavorite($object) : $this->favorite($object);
+        $this->hasFavorited($anime)
+            ? $this->unfavorite($anime)
+            : $this->favorite($anime);
     }
 
-    public function hasFavorited(Model $object): bool
+    public function hasFavorited(Anime $anime): bool
     {
-        return ($this->relationLoaded('favorites') ? $this->favorites : $this->favorites())
-            ->where('favoriteable_id', $object->getKey())
-            ->where('favoriteable_type', $object->getMorphClass())
-            ->count() > 0;
+        return $this->favorites()
+            ->where('anime_id', $anime->getKey())
+            ->exists();
     }
 
-    public function favorites(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function favorites()
     {
-        return $this->hasMany(config('animesfavorite.favorite_model'), config('animesfavorite.user_foreign_key'), $this->getKeyName());
-    }
-
-    public function attachFavoriteStatus(&$favoriteables, ?callable $resolver)
-    {
-        $favorites = $this->favorites()->get()->keyBy(function ($item) {
-            return \sprintf('%s-%s', $item->favoriteable_type, $item->favoriteable_id);
-        });
-
-        $attachStatus = function ($favoriteable) use ($favorites, $resolver) {
-            $resolver = $resolver ?? fn ($m) => $m;
-            $favoriteable = $resolver($favoriteable);
-
-            if (\in_array(Favoriteable::class, \class_uses($favoriteable))) {
-                $key = \sprintf('%s-%s', $favoriteable->getMorphClass(), $favoriteable->getKey());
-                $favoriteable->setAttribute('has_favorited', $favorites->has($key));
-            }
-
-            return $favoriteable;
-        };
-
-        switch (true) {
-            case $favoriteables instanceof Model:
-                return $attachStatus($favoriteables);
-            case $favoriteables instanceof Collection:
-                return $favoriteables->each($attachStatus);
-            case $favoriteables instanceof LazyCollection:
-                return $favoriteables = $favoriteables->map($attachStatus);
-            case $favoriteables instanceof AbstractPaginator:
-            case $favoriteables instanceof AbstractCursorPaginator:
-                return $favoriteables->through($attachStatus);
-            case $favoriteables instanceof Paginator:
-                // custom paginator will return a collection
-                return collect($favoriteables->items())->transform($attachStatus);
-            case \is_array($favoriteables):
-                return \collect($favoriteables)->transform($attachStatus);
-            default:
-                throw new \InvalidArgumentException('Invalid argument type.');
-        }
-    }
-
-    public function getFavoriteItems(string $model)
-    {
-        return app($model)->whereHas(
-            'favoriters',
-            function ($q) {
-                return $q->where(config('animesfavorite.user_foreign_key'), $this->getKey());
-            }
-        );
+        return $this->hasMany(Favorite::class, config('animesfavorite.user_foreign_key'));
     }
 }
